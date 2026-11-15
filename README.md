@@ -20,12 +20,12 @@ python3 --version
 
 ## Quick Start (blank system)
 
-On a fresh Ubuntu or CachyOS installation first prepare the base packages:
+On a fresh Ubuntu or CachyOS installation first prepare the base packages, firmware and groups:
 
 ```bash
 git clone https://github.com/siteoperator/amd-virt-env-installer.git
 cd amd-virt-env-installer
-chmod +x prepare_os.sh install.sh
+chmod +x prepare_os.sh install.sh activate_env.sh
 ./prepare_os.sh
 ```
 
@@ -35,6 +35,12 @@ Then continue with the main installer:
 ./install.sh
 # or with optional ROCm install guidance:
 # INSTALL_ROCM=1 ./install.sh
+```
+
+After installation, activate the environment (sets `HSA_OVERRIDE` automatically for common iGPUs):
+
+```bash
+source ./activate_env.sh
 ```
 
 ## Was das Skript bereits prüft und abdeckt
@@ -50,7 +56,7 @@ Then continue with the main installer:
 | PyTorch ROCm | Ja | Installiert Wheels mit Fallback-Indizes |
 | Verifikation | Ja | Prüft ob PyTorch die GPU sieht |
 
-**Hinweis:** ROCm/Treiber-Installation und das Hinzufügen zu den Gruppen `render`/`video` bleiben bewusst manuell (Sicherheit + Re-Login erforderlich).
+**Hinweis:** ROCm/Treiber-Installation bleibt bewusst manuell. Gruppen können jetzt interaktiv in `prepare_os.sh` gesetzt werden (Re-Login erforderlich).
 
 ## Quick Start
 
@@ -84,11 +90,17 @@ The script contains special hints for common laptop APUs:
 | Ryzen AI 9 370  | Radeon 890M   | gfx1150            | `11.0.0` or `11.5.0`   |
 | Ryzen AI 9 470  | Radeon 890M   | gfx1150            | `11.0.0` or `11.5.0`   |
 
-Example:
+Example (manual):
 
 ```bash
 export HSA_OVERRIDE_GFX_VERSION=11.0.0
 ./install.sh
+```
+
+Automatisch nach der Installation:
+
+```bash
+source ./activate_env.sh
 ```
 
 Vollständige Kompatibilitätsliste (Instinct, Radeon PRO, RX, Ryzen APUs):
@@ -125,7 +137,7 @@ sudo pacman -S rocm-core rocm-hip-runtime rocminfo rocm-smi-lib
 # or for more packages: paru -S rocm-hip-sdk
 ```
 
-Always add your user to the groups and re-login:
+Always add your user to the groups and re-login (or let `prepare_os.sh` do it):
 
 ```bash
 sudo usermod -a -G render,video $USER
@@ -178,7 +190,9 @@ Spezifische Optimierungen für CachyOS und Zen4/Zen5 CPUs:
 ## Usage after install
 
 ```bash
-source venv/bin/activate
+source ./activate_env.sh
+# or manually:
+# source venv/bin/activate
 python -c "import torch; print(torch.cuda.is_available()); print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'No GPU')"
 ```
 
@@ -212,7 +226,8 @@ DEBUG=1 ./install.sh
 
 - CachyOS / Arch users benefit from the latest kernels and official ROCm packages.
 - On Ubuntu 26.04 you can often just use `sudo apt install rocm`.
-- Always activate the venv before running your workloads.
+- Always activate the venv before running your workloads (prefer `source ./activate_env.sh`).
+- See [Todo.md](Todo.md) for planned improvements.
 
 ## License
 
