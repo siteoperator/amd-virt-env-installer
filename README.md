@@ -29,10 +29,11 @@ chmod +x install.sh
 
 The script will:
 1. Detect your AMD GPU / iGPU (via `rocminfo`, `lspci` and `rocm-smi`)
-2. Create a virtual environment (`./venv` by default)
-3. Upgrade pip
-4. Install the latest stable ROCm PyTorch wheels
-5. Verify that the GPU is visible to PyTorch
+2. Optionally install system ROCm (if `INSTALL_ROCM=1`)
+3. Create a virtual environment (`./venv` by default)
+4. Upgrade pip
+5. Install the latest stable ROCm PyTorch wheels
+6. Verify that the GPU is visible to PyTorch
 
 ## GPU / iGPU Detection
 
@@ -52,6 +53,30 @@ Example output:
 ```
 
 This helps you choose the correct ROCm version or decide whether `HSA_OVERRIDE_GFX_VERSION` is needed (especially for iGPUs).
+
+## System ROCm / Driver Installation (optional)
+
+By default the script only installs PyTorch ROCm wheels into a venv.  
+For full system ROCm (recommended for production or broader tool support) use:
+
+```bash
+INSTALL_ROCM=1 ./install.sh
+```
+
+### Behavior
+
+| Ubuntu Version | Action |
+|----------------|--------|
+| **26.04** | Tries `sudo apt install -y rocm` (native packages) |
+| **24.04 / others** | Prints clear manual steps for the official `amdgpu-install` method |
+
+Additional tips that are always shown:
+
+- Add your user to the groups: `sudo usermod -a -G render,video $USER`
+- Reboot (or re-login) after driver installation
+- Check with `rocminfo` and `rocm-smi`
+
+**Note:** Full automatic `amdgpu-install` is intentionally not executed by default for safety. Review the printed commands and run them if you want the latest AMD packages.
 
 ## Usage after install
 
@@ -86,7 +111,7 @@ This enables:
 Example with custom settings:
 
 ```bash
-DEBUG=1 VENV_DIR=~/rocm-env PYTHON=python3.12 ./install.sh
+DEBUG=1 INSTALL_ROCM=1 VENV_DIR=~/rocm-env PYTHON=python3.12 ./install.sh
 ```
 
 ### What you get on errors
@@ -110,12 +135,13 @@ Example error output:
 
 ### Useful environment variables
 
-| Variable   | Default   | Description                          |
-|------------|-----------|--------------------------------------|
-| `DEBUG`    | `0`       | Set to `1` for verbose tracing       |
-| `VENV_DIR` | `./venv`  | Path of the virtual environment      |
-| `PYTHON`   | `python3` | Python interpreter to use            |
-| `LOG_FILE` | `install.log` | Log file location                 |
+| Variable       | Default     | Description                                      |
+|----------------|-------------|--------------------------------------------------|
+| `DEBUG`        | `0`         | Set to `1` for verbose tracing                   |
+| `INSTALL_ROCM` | `0`         | Set to `1` to attempt system ROCm installation   |
+| `VENV_DIR`     | `./venv`    | Path of the virtual environment                  |
+| `PYTHON`       | `python3`   | Python interpreter to use                        |
+| `LOG_FILE`     | `install.log` | Log file location                              |
 
 ### Common problems
 
@@ -124,6 +150,7 @@ Example error output:
 - **Disk space** → At least ~3 GB free recommended
 - **Network issues** → The script tries multiple PyTorch ROCm indexes automatically
 - **iGPU not working** → Often needs a specific ROCm version or `HSA_OVERRIDE_GFX_VERSION`
+- **After driver install** → Reboot and re-check with `rocminfo`
 
 ## Customization
 
@@ -131,12 +158,14 @@ Edit `install.sh` to change:
 - Virtual environment path
 - Specific ROCm / PyTorch versions
 - Extra packages (e.g. `transformers`, `accelerate`, `comfyui` dependencies)
+- Automatic vs. manual ROCm installation logic
 
 ## Notes
 
 - On Ubuntu 26.04 you can often just use `sudo apt install rocm` for the system packages.
-- For the newest ROCm versions, the official AMD wheel indexes are preferred.
+- For the newest ROCm versions, the official AMD wheel indexes or `amdgpu-install` are preferred.
 - Always activate the venv before running your workloads.
+- System ROCm installation changes packages and usually requires a reboot.
 
 ## License
 
