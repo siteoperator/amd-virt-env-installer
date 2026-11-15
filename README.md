@@ -118,6 +118,12 @@ Timeline-basierte Analyse mit Perfetto UI:
 
 **[PERFETTO.md](PERFETTO.md)**
 
+## Systemdiagnose
+
+Tools und Workflows zur Prüfung, ob ROCm und die GPU korrekt funktionieren (`rocminfo`, `rocm-smi`, `amd-smi`, …):
+
+**[DIAGNOSTICS.md](DIAGNOSTICS.md)**
+
 ## Usage after install
 
 ```bash
