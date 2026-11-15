@@ -29,12 +29,13 @@ chmod +x install.sh
 
 The script will:
 1. Detect your distribution (Ubuntu / CachyOS / Arch)
-2. Detect your AMD GPU / iGPU (via `rocminfo`, `lspci` and `rocm-smi`)
-3. Optionally install system ROCm (if `INSTALL_ROCM=1`)
-4. Create a virtual environment (`./venv` by default)
-5. Upgrade pip
-6. Install the latest stable ROCm PyTorch wheels
-7. Verify that the GPU is visible to PyTorch
+2. Check AMDGPU / amdkfd kernel modules and key parameters
+3. Detect your AMD GPU / iGPU (via `rocminfo`, `lspci` and `rocm-smi`)
+4. Optionally install system ROCm (if `INSTALL_ROCM=1`)
+5. Create a virtual environment (`./venv` by default)
+6. Upgrade pip
+7. Install the latest stable ROCm PyTorch wheels
+8. Verify that the GPU is visible to PyTorch
 
 ## Supported Ryzen Models (iGPU)
 
@@ -56,9 +57,13 @@ export HSA_OVERRIDE_GFX_VERSION=11.0.0
 ./install.sh
 ```
 
-## GPU / iGPU Detection
+## GPU / iGPU Detection & Kernel Modules
 
-At the start the script tries to identify your AMD hardware and prints tailored advice for the models above.
+At the start the script tries to identify your AMD hardware, checks whether the `amdgpu` and `amdkfd` modules are loaded, and reports important parameters (ppfeaturemask, gpu_recovery, etc.).
+
+For details on the modules, parameters, and recommended settings for Ryzen APUs / CachyOS see:
+
+**[DRIVER_MODULES.md](DRIVER_MODULES.md)**
 
 ## System ROCm / Driver Installation (optional)
 
@@ -153,7 +158,8 @@ DEBUG=1 ./install.sh
 
 - **`python3-venv` missing** (Ubuntu) → `sudo apt install python3-venv`
 - **No GPU detected** → Check ROCm, groups (`video`, `render`), and `HSA_OVERRIDE_GFX_VERSION`
-- **iGPU not working** → See the Ryzen table above
+- **amdgpu / amdkfd not loaded** → See [DRIVER_MODULES.md](DRIVER_MODULES.md)
+- **iGPU not working** → See the Ryzen table above and DRIVER_MODULES.md
 - **After driver install** → Reboot and re-check with `rocminfo`
 
 ## Notes
