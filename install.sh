@@ -13,6 +13,7 @@
 #   - debug() helper for conditional verbose output
 #   - All output logged to install.log
 #   - Environment dump on failure when DEBUG=1
+#   - AMD GPU / iGPU detection (lspci + rocminfo)
 
 set -euo pipefail
 
@@ -87,6 +88,68 @@ cleanup() {
 trap cleanup EXIT
 
 # ---------------------------------------------------------------------------
+# AMD GPU / iGPU Detection
+# ---------------------------------------------------------------------------
+detect_amd_gpus() {
+  local gpus_found=0
+  log "=== Detecting AMD GPUs / iGPUs ==="
+
+  # 1. Prefer rocminfo if available (most accurate for ROCm)
+  if command -v rocminfo >/dev/null 2>&1; then
+    log "Using rocminfo for detailed agent info..."
+    local agents
+    agents=$(rocminfo 2>/dev/null | grep -E "Marketing Name:|Name:|Device Type:|gfx" | head -40 || true)
+    if [[ -n "$agents" ]]; then
+      echo "$agents" | tee -a "$LOG_FILE"
+      gpus_found=1
+    fi
+  fi
+
+  # 2. Fallback / additional info from lspci
+  if command -v lspci >/dev/null 2>&1; then
+    local lspci_out
+    lspci_out=$(lspci -nn | grep -iE 'vga|3d|display' | grep -i '1002:' || true)
+    if [[ -n "$lspci_out" ]]; then
+      log "AMD PCI devices (vendor 1002):"
+      echo "$lspci_out" | tee -a "$LOG_FILE"
+      gpus_found=1
+
+      # Rough classification
+      if echo "$lspci_out" | grep -qiE 'Radeon.*RX [7-9]|Navi [3-4]|gfx11|gfx12'; then
+        log "Detected: Likely discrete GPU (RDNA3/RDNA4 / RX 7000/9000 series)"
+      elif echo "$lspci_out" | grep -qiE 'Radeon.*RX 6|Navi 2|gfx10'; then
+        log "Detected: Likely discrete GPU (RDNA2 / RX 6000 series)"
+      elif echo "$lspci_out" | grep -qiE 'Radeon.*780M|760M|680M|Phoenix|Rembrandt|gfx1103|gfx1036'; then
+        log "Detected: Likely integrated GPU (iGPU / APU)"
+        warn "iGPUs often need specific ROCm versions or HSA_OVERRIDE_GFX_VERSION."
+      else
+        log "Detected: AMD GPU (exact model classification incomplete)"
+      fi
+    else
+      warn "No AMD GPU found via lspci."
+    fi
+  else
+    warn "lspci not available. Install pciutils for better detection."
+  fi
+
+  # 3. rocm-smi product name if available
+  if command -v rocm-smi >/dev/null 2>&1; then
+    log "rocm-smi product info:"
+    rocm-smi --showproductname 2>/dev/null | head -20 | tee -a "$LOG_FILE" || true
+    gpus_found=1
+  fi
+
+  if [[ $gpus_found -eq 0 ]]; then
+    warn "No AMD GPU / iGPU could be detected."
+    warn "The installer will continue, but ROCm/PyTorch may fall back to CPU."
+    warn "Make sure the amdgpu driver is loaded and the user is in groups 'render' and 'video'."
+  else
+    success "AMD GPU detection finished."
+  fi
+  log ""
+}
+
+# ---------------------------------------------------------------------------
 # Start
 # ---------------------------------------------------------------------------
 : > "$LOG_FILE"   # truncate log
@@ -96,6 +159,9 @@ log "Target venv: $VENV_DIR"
 log "Python binary: $PYTHON"
 debug "Debug mode is ON (set -x enabled, full tracing)"
 debug "Bash version: $BASH_VERSION"
+
+# Run GPU detection early
+detect_amd_gpus
 
 # ---------------------------------------------------------------------------
 # Pre-flight checks
