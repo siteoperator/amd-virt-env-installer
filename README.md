@@ -18,6 +18,40 @@ rocminfo
 python3 --version
 ```
 
+## Quick Start (blank system)
+
+On a fresh Ubuntu or CachyOS installation first prepare the base packages:
+
+```bash
+git clone https://github.com/siteoperator/amd-virt-env-installer.git
+cd amd-virt-env-installer
+chmod +x prepare_os.sh install.sh
+./prepare_os.sh
+```
+
+Then continue with the main installer:
+
+```bash
+./install.sh
+# or with optional ROCm install guidance:
+# INSTALL_ROCM=1 ./install.sh
+```
+
+## Was das Skript bereits prüft und abdeckt
+
+| Bereich | Abgedeckt? | Details |
+|---------|------------|---------|
+| Distribution | Ja | Ubuntu vs. CachyOS/Arch |
+| Kernel-Module | Ja | `amdgpu` + `amdkfd` geladen? + Parameter |
+| Berechtigungen | Ja | Gruppen `render` + `video`, `/dev/kfd` |
+| GPU-Erkennung | Ja | `rocminfo`, `lspci`, `rocm-smi` + Hinweise für Ryzen-Modelle |
+| HSA_OVERRIDE | Ja | Warnt und zeigt passende Werte |
+| Python + venv | Ja | Prüft ob vorhanden, gibt Install-Hinweis |
+| PyTorch ROCm | Ja | Installiert Wheels mit Fallback-Indizes |
+| Verifikation | Ja | Prüft ob PyTorch die GPU sieht |
+
+**Hinweis:** ROCm/Treiber-Installation und das Hinzufügen zu den Gruppen `render`/`video` bleiben bewusst manuell (Sicherheit + Re-Login erforderlich).
+
 ## Quick Start
 
 ```bash
@@ -164,7 +198,7 @@ DEBUG=1 ./install.sh
 
 ### Common problems
 
-- **`python3-venv` missing** (Ubuntu) → `sudo apt install python3-venv`
+- **`python3-venv` missing** (Ubuntu) → `sudo apt install python3-venv` (or run `./prepare_os.sh`)
 - **No GPU detected** → Check ROCm, groups (`video`, `render`), and `HSA_OVERRIDE_GFX_VERSION`
 - **amdgpu / amdkfd not loaded** → See [DRIVER_MODULES.md](DRIVER_MODULES.md)
 - **iGPU not working** → See the Ryzen table above and DRIVER_MODULES.md
