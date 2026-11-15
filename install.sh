@@ -9,9 +9,13 @@
 #   INSTALL_ROCM=1 ./install.sh          # also try to install system ROCm (requires sudo)
 #   VENV_DIR=~/my-env PYTHON=python3.12 ./install.sh
 #
+# Supported distributions:
+#   - Ubuntu 22.04 / 24.04 / 26.04
+#   - CachyOS / Arch Linux (and derivatives)
+#
 # Features:
-#   - AMD GPU / iGPU detection
-#   - Optional system ROCm install (Ubuntu 24.04 / 26.04 aware)
+#   - AMD GPU / iGPU detection (including common Ryzen APUs)
+#   - Optional system ROCm install (Ubuntu + CachyOS/Arch aware)
 #   - Robust venv + PyTorch ROCm wheels
 #   - DEBUG mode, detailed logging, error context
 
@@ -86,6 +90,24 @@ cleanup() {
 trap cleanup EXIT
 
 # ---------------------------------------------------------------------------
+# Distro Detection
+# ---------------------------------------------------------------------------
+detect_distro() {
+  DISTRO="unknown"
+  DISTRO_VER=""
+  if [[ -f /etc/os-release ]]; then
+    # shellcheck disable=SC1091
+    source /etc/os-release
+    case "${ID:-}" in
+      ubuntu) DISTRO="ubuntu"; DISTRO_VER="${VERSION_ID:-}" ;;
+      cachyos|arch|endeavouros|manjaro) DISTRO="arch"; DISTRO_VER="${VERSION_ID:-rolling}" ;;
+      *) DISTRO="${ID:-unknown}" ;;
+    esac
+  fi
+  log "Detected distribution: $DISTRO ${DISTRO_VER}"
+}
+
+# ---------------------------------------------------------------------------
 # AMD GPU / iGPU Detection
 # ---------------------------------------------------------------------------
 detect_amd_gpus() {
@@ -110,15 +132,23 @@ detect_amd_gpus() {
       echo "$lspci_out" | tee -a "$LOG_FILE"
       gpus_found=1
 
-      if echo "$lspci_out" | grep -qiE 'Radeon.*RX [7-9]|Navi [3-4]|gfx11|gfx12'; then
+      # Classification + Ryzen APU hints
+      if echo "$lspci_out" | grep -qiE 'Radeon.*890M|880M|gfx1150|Strix'; then
+        log "Detected: Ryzen AI 300 series iGPU (Radeon 890M / gfx1150)"
+        warn "For AI 370 / AI 470 etc. try: export HSA_OVERRIDE_GFX_VERSION=11.0.0 or 11.5.0"
+      elif echo "$lspci_out" | grep -qiE 'Radeon.*780M|760M|gfx1103|Phoenix|Hawk'; then
+        log "Detected: Ryzen 7000/8000 series iGPU (Radeon 780M / gfx1103)"
+        warn "For 8845HS / 8835H etc. often works with HSA_OVERRIDE_GFX_VERSION=11.0.0"
+      elif echo "$lspci_out" | grep -qiE 'Radeon.*680M|660M|Rembrandt|gfx103'; then
+        log "Detected: Ryzen 6000/7000 series iGPU (Radeon 680M)"
+        warn "For 7735HS / 6900HX etc. try HSA_OVERRIDE_GFX_VERSION=10.3.0"
+      elif echo "$lspci_out" | grep -qiE 'Radeon.*RX [7-9]|Navi [3-4]|gfx11|gfx12'; then
         log "Detected: Likely discrete GPU (RDNA3/RDNA4 / RX 7000/9000 series)"
       elif echo "$lspci_out" | grep -qiE 'Radeon.*RX 6|Navi 2|gfx10'; then
         log "Detected: Likely discrete GPU (RDNA2 / RX 6000 series)"
-      elif echo "$lspci_out" | grep -qiE 'Radeon.*780M|760M|680M|Phoenix|Rembrandt|gfx1103|gfx1036'; then
-        log "Detected: Likely integrated GPU (iGPU / APU)"
-        warn "iGPUs often need specific ROCm versions or HSA_OVERRIDE_GFX_VERSION."
       else
         log "Detected: AMD GPU (exact model classification incomplete)"
+        warn "iGPUs often need HSA_OVERRIDE_GFX_VERSION. Check rocminfo output."
       fi
     else
       warn "No AMD GPU found via lspci."
@@ -161,42 +191,34 @@ install_rocm_system() {
     return 1
   fi
 
-  # Detect Ubuntu version
-  local ubuntu_ver=""
-  if [[ -f /etc/os-release ]]; then
-    # shellcheck disable=SC1091
-    source /etc/os-release
-    ubuntu_ver="${VERSION_ID:-}"
-    log "Detected OS: ${NAME:-Unknown} ${ubuntu_ver}"
-  fi
+  detect_distro
 
-  if [[ "$ubuntu_ver" == "26.04" ]]; then
+  if [[ "$DISTRO" == "arch" ]]; then
+    log "CachyOS / Arch Linux detected."
+    log "Recommended packages (official repos):"
+    log "  sudo pacman -Syu"
+    log "  sudo pacman -S rocm-core rocm-hip-runtime rocminfo rocm-smi-lib"
+    log ""
+    log "For the latest packages you can also use the AUR (e.g. with paru):"
+    log "  paru -S rocm-hip-sdk"
+    log ""
+    warn "Automatic pacman install is not executed by default for safety."
+    warn "Run the commands above, then re-login and re-run this script without INSTALL_ROCM."
+  elif [[ "$DISTRO" == "ubuntu" && "$DISTRO_VER" == "26.04" ]]; then
     log "Ubuntu 26.04 detected – trying native apt install rocm..."
     if sudo apt update && sudo apt install -y rocm; then
       success "ROCm installed via Ubuntu packages."
-      log "You may still want to add yourself to groups:"
-      log "  sudo usermod -a -G render,video $USER"
-      log "Then log out and back in (or reboot)."
     else
-      warn "apt install rocm failed. Falling back to manual guidance."
+      warn "apt install rocm failed."
     fi
   else
-    log "Ubuntu $ubuntu_ver (or other) – recommending AMD amdgpu-install method."
-    log ""
-    log "Recommended steps (run manually or review carefully):"
-    log "  1. Download amdgpu-install for your Ubuntu version from:"
-    log "     https://repo.radeon.com/amdgpu-install/"
-    log "  2. Example for Ubuntu 24.04 (noble):"
-    log "     wget https://repo.radeon.com/amdgpu-install/7.2.4/ubuntu/noble/amdgpu-install_7.2.4.70204-1_all.deb"
-    log "     sudo apt install ./amdgpu-install_*.deb"
-    log "  3. Install ROCm:"
-    log "     sudo amdgpu-install -y --usecase=rocm"
-    log "  4. Add user to groups and reboot:"
-    log "     sudo usermod -a -G render,video $USER"
-    log "     sudo reboot"
+    log "Ubuntu / Debian-based system detected."
+    log "Recommended steps for Ubuntu 24.04 (noble):"
+    log "  wget https://repo.radeon.com/amdgpu-install/7.2.4/ubuntu/noble/amdgpu-install_7.2.4.70204-1_all.deb"
+    log "  sudo apt install ./amdgpu-install_*.deb"
+    log "  sudo amdgpu-install -y --usecase=rocm"
     log ""
     warn "Automatic amdgpu-install is not executed by default for safety."
-    warn "Set INSTALL_ROCM=1 and review the log, or run the commands above."
   fi
 
   # Common post-steps
@@ -221,6 +243,7 @@ log "INSTALL_ROCM=$INSTALL_ROCM"
 debug "Debug mode is ON (set -x enabled, full tracing)"
 debug "Bash version: $BASH_VERSION"
 
+detect_distro
 detect_amd_gpus
 install_rocm_system
 
@@ -229,7 +252,11 @@ install_rocm_system
 # ---------------------------------------------------------------------------
 if ! command -v "$PYTHON" >/dev/null 2>&1; then
   error "$PYTHON not found in PATH."
-  error "Install it with: sudo apt install python3 python3-venv python3-pip"
+  if [[ "$DISTRO" == "arch" ]]; then
+    error "Install it with: sudo pacman -S python"
+  else
+    error "Install it with: sudo apt install python3 python3-venv python3-pip"
+  fi
   exit 1
 fi
 
@@ -239,7 +266,11 @@ debug "Python path: $(command -v "$PYTHON")"
 
 if ! "$PYTHON" -c "import venv" >/dev/null 2>&1; then
   error "Python venv module is missing."
-  error "On Ubuntu/Debian run: sudo apt install python3-venv"
+  if [[ "$DISTRO" == "arch" ]]; then
+    error "On Arch/CachyOS the venv module is usually part of the python package."
+  else
+    error "On Ubuntu/Debian run: sudo apt install python3-venv"
+  fi
   exit 1
 fi
 
@@ -348,6 +379,7 @@ try:
     else:
         print("Warning: No AMD GPU detected by PyTorch.")
         print("Check ROCm installation, user groups (video/render), and permissions.")
+        print("For many Ryzen iGPUs set HSA_OVERRIDE_GFX_VERSION before running.")
 except Exception as e:
     print(f"ERROR during verification: {e}")
     sys.exit(1)
