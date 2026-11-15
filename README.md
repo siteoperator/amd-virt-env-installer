@@ -129,6 +129,14 @@ Tools und Workflows zur Prüfung, ob ROCm und die GPU korrekt funktionieren (`ro
 
 **[DIAGNOSTICS.md](DIAGNOSTICS.md)**
 
+## CachyOS & Zen4 Tuning
+
+Spezifische Optimierungen für CachyOS und Zen4/Zen5 CPUs:
+
+- **[CACHYOS.md](CACHYOS.md)** – Optimized Repositories (znver4), Kernel (ThinLTO/AutoFDO/BORE), ROCm-Pakete
+- **[ZEN4.md](ZEN4.md)** – Zen4-spezifisches Tuning und znver4-Repository
+- **[AMD_PSTATE.md](AMD_PSTATE.md)** – AMD P-State Autonomous Mode (`amd_pstate=active`) und EPP
+
 ## Usage after install
 
 ```bash
