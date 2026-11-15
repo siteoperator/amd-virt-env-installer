@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
 # AMD ROCm Virtual Environment Installer
 # Creates a clean Python venv and installs ROCm-enabled PyTorch
+# Optionally installs the system-wide ROCm stack / amdgpu driver
 #
 # Usage:
 #   ./install.sh
-#   DEBUG=1 ./install.sh                 # verbose tracing
+#   DEBUG=1 ./install.sh
+#   INSTALL_ROCM=1 ./install.sh          # also try to install system ROCm (requires sudo)
 #   VENV_DIR=~/my-env PYTHON=python3.12 ./install.sh
 #
-# Debugging techniques used in this script:
-#   - DEBUG=1 enables set -x (full command tracing)
-#   - ERR trap with line number, function, and failing command
-#   - debug() helper for conditional verbose output
-#   - All output logged to install.log
-#   - Environment dump on failure when DEBUG=1
-#   - AMD GPU / iGPU detection (lspci + rocminfo)
+# Features:
+#   - AMD GPU / iGPU detection
+#   - Optional system ROCm install (Ubuntu 24.04 / 26.04 aware)
+#   - Robust venv + PyTorch ROCm wheels
+#   - DEBUG mode, detailed logging, error context
 
 set -euo pipefail
 
@@ -24,6 +24,7 @@ VENV_DIR="${VENV_DIR:-./venv}"
 PYTHON="${PYTHON:-python3}"
 LOG_FILE="${LOG_FILE:-install.log}"
 DEBUG="${DEBUG:-0}"
+INSTALL_ROCM="${INSTALL_ROCM:-0}"   # set to 1 to attempt system ROCm install
 
 # Enable full tracing when DEBUG=1
 if [[ "$DEBUG" == "1" ]]; then
@@ -31,7 +32,7 @@ if [[ "$DEBUG" == "1" ]]; then
   export PS4='+ ${BASH_SOURCE[0]}:${LINENO}: ${FUNCNAME[0]:+${FUNCNAME[0]}(): }'
 fi
 
-# Colors (safe even if terminal does not support them)
+# Colors
 if [[ -t 1 ]]; then
   RED='\033[0;31m'
   GREEN='\033[0;32m'
@@ -52,7 +53,6 @@ error()  { echo -e "${RED}[ERROR]${NC} $*" | tee -a "$LOG_FILE" >&2; }
 success(){ echo -e "${GREEN}[OK]${NC} $*" | tee -a "$LOG_FILE"; }
 debug()  { [[ "$DEBUG" == "1" ]] && echo -e "${MAGENTA}[DEBUG]${NC} $*" | tee -a "$LOG_FILE" >&2 || true; }
 
-# Advanced error handler: shows line, function, and the failing command
 on_error() {
   local exit_code=$?
   local line_no=${1:-unknown}
@@ -74,10 +74,8 @@ on_error() {
   exit $exit_code
 }
 
-# Trap ERR to get precise context (BASH_LINENO, FUNCNAME, BASH_COMMAND)
 trap 'on_error ${BASH_LINENO[0]} ${FUNCNAME[1]:-main} "$BASH_COMMAND"' ERR
 
-# Also keep a simple EXIT trap for clean messaging
 cleanup() {
   local exit_code=$?
   if [[ $exit_code -ne 0 ]]; then
@@ -94,7 +92,6 @@ detect_amd_gpus() {
   local gpus_found=0
   log "=== Detecting AMD GPUs / iGPUs ==="
 
-  # 1. Prefer rocminfo if available (most accurate for ROCm)
   if command -v rocminfo >/dev/null 2>&1; then
     log "Using rocminfo for detailed agent info..."
     local agents
@@ -105,7 +102,6 @@ detect_amd_gpus() {
     fi
   fi
 
-  # 2. Fallback / additional info from lspci
   if command -v lspci >/dev/null 2>&1; then
     local lspci_out
     lspci_out=$(lspci -nn | grep -iE 'vga|3d|display' | grep -i '1002:' || true)
@@ -114,7 +110,6 @@ detect_amd_gpus() {
       echo "$lspci_out" | tee -a "$LOG_FILE"
       gpus_found=1
 
-      # Rough classification
       if echo "$lspci_out" | grep -qiE 'Radeon.*RX [7-9]|Navi [3-4]|gfx11|gfx12'; then
         log "Detected: Likely discrete GPU (RDNA3/RDNA4 / RX 7000/9000 series)"
       elif echo "$lspci_out" | grep -qiE 'Radeon.*RX 6|Navi 2|gfx10'; then
@@ -132,7 +127,6 @@ detect_amd_gpus() {
     warn "lspci not available. Install pciutils for better detection."
   fi
 
-  # 3. rocm-smi product name if available
   if command -v rocm-smi >/dev/null 2>&1; then
     log "rocm-smi product info:"
     rocm-smi --showproductname 2>/dev/null | head -20 | tee -a "$LOG_FILE" || true
@@ -150,18 +144,85 @@ detect_amd_gpus() {
 }
 
 # ---------------------------------------------------------------------------
+# Optional System ROCm Installation
+# ---------------------------------------------------------------------------
+install_rocm_system() {
+  if [[ "$INSTALL_ROCM" != "1" ]]; then
+    log "Skipping system ROCm install (set INSTALL_ROCM=1 to enable)."
+    return 0
+  fi
+
+  log "=== System ROCm / amdgpu Installation ==="
+  warn "This step requires sudo and may change system packages."
+  warn "A reboot is usually required afterwards."
+
+  if ! command -v sudo >/dev/null 2>&1; then
+    error "sudo not found. Cannot install system ROCm."
+    return 1
+  fi
+
+  # Detect Ubuntu version
+  local ubuntu_ver=""
+  if [[ -f /etc/os-release ]]; then
+    # shellcheck disable=SC1091
+    source /etc/os-release
+    ubuntu_ver="${VERSION_ID:-}"
+    log "Detected OS: ${NAME:-Unknown} ${ubuntu_ver}"
+  fi
+
+  if [[ "$ubuntu_ver" == "26.04" ]]; then
+    log "Ubuntu 26.04 detected – trying native apt install rocm..."
+    if sudo apt update && sudo apt install -y rocm; then
+      success "ROCm installed via Ubuntu packages."
+      log "You may still want to add yourself to groups:"
+      log "  sudo usermod -a -G render,video $USER"
+      log "Then log out and back in (or reboot)."
+    else
+      warn "apt install rocm failed. Falling back to manual guidance."
+    fi
+  else
+    log "Ubuntu $ubuntu_ver (or other) – recommending AMD amdgpu-install method."
+    log ""
+    log "Recommended steps (run manually or review carefully):"
+    log "  1. Download amdgpu-install for your Ubuntu version from:"
+    log "     https://repo.radeon.com/amdgpu-install/"
+    log "  2. Example for Ubuntu 24.04 (noble):"
+    log "     wget https://repo.radeon.com/amdgpu-install/7.2.4/ubuntu/noble/amdgpu-install_7.2.4.70204-1_all.deb"
+    log "     sudo apt install ./amdgpu-install_*.deb"
+    log "  3. Install ROCm:"
+    log "     sudo amdgpu-install -y --usecase=rocm"
+    log "  4. Add user to groups and reboot:"
+    log "     sudo usermod -a -G render,video $USER"
+    log "     sudo reboot"
+    log ""
+    warn "Automatic amdgpu-install is not executed by default for safety."
+    warn "Set INSTALL_ROCM=1 and review the log, or run the commands above."
+  fi
+
+  # Common post-steps
+  if ! groups "$USER" | grep -qE 'render|video'; then
+    warn "Current user is not in 'render' or 'video' group."
+    warn "Run: sudo usermod -a -G render,video $USER   (then re-login)"
+  fi
+
+  log "System ROCm step finished."
+  log ""
+}
+
+# ---------------------------------------------------------------------------
 # Start
 # ---------------------------------------------------------------------------
-: > "$LOG_FILE"   # truncate log
+: > "$LOG_FILE"
 log "=== AMD ROCm Virtual Environment Installer ==="
 log "Log file: $LOG_FILE"
 log "Target venv: $VENV_DIR"
 log "Python binary: $PYTHON"
+log "INSTALL_ROCM=$INSTALL_ROCM"
 debug "Debug mode is ON (set -x enabled, full tracing)"
 debug "Bash version: $BASH_VERSION"
 
-# Run GPU detection early
 detect_amd_gpus
+install_rocm_system
 
 # ---------------------------------------------------------------------------
 # Pre-flight checks
@@ -176,20 +237,17 @@ PY_VERSION=$("$PYTHON" --version 2>&1 || true)
 log "Detected: $PY_VERSION"
 debug "Python path: $(command -v "$PYTHON")"
 
-# Check that the venv module is available
 if ! "$PYTHON" -c "import venv" >/dev/null 2>&1; then
   error "Python venv module is missing."
   error "On Ubuntu/Debian run: sudo apt install python3-venv"
   exit 1
 fi
 
-# Optional: warn if no ROCm tools are visible
 if ! command -v rocminfo >/dev/null 2>&1 && ! command -v rocm-smi >/dev/null 2>&1; then
   warn "Neither rocminfo nor rocm-smi found. ROCm may not be installed on the host."
   warn "PyTorch may still work if the wheels bundle the necessary runtime, but GPU detection can fail."
 fi
 
-# Rough disk space check (at least ~3 GB free recommended)
 if command -v df >/dev/null 2>&1; then
   FREE_KB=$(df -k . | awk 'NR==2 {print $4}')
   debug "Free disk space: ${FREE_KB} KB"
@@ -256,7 +314,6 @@ install_torch() {
 }
 
 INSTALLED=0
-# Try newer ROCm indexes first, then fall back
 for INDEX in \
   "https://download.pytorch.org/whl/rocm6.2" \
   "https://download.pytorch.org/whl/rocm6.1" \
@@ -315,4 +372,7 @@ log ""
 log "Full log saved to: $LOG_FILE"
 if [[ "$DEBUG" == "1" ]]; then
   log "Debug mode was enabled. Full command trace is in the log."
+fi
+if [[ "$INSTALL_ROCM" == "1" ]]; then
+  log "System ROCm installation was requested. Check above for results and reboot if needed."
 fi
