@@ -52,13 +52,13 @@ Ergebnisse landen in `~/.config/miopen/`.
 
 ## 4. Profiling
 
-```bash
-# Einfaches Kernel-Profiling
-rocprofv3 --stats -- python your_script.py
+Ausführliche Anleitung zu `rocprofv3` (Kernel-Stats, Traces, Perfetto, PMC):
 
-# Oder mit rocminfo / rocm-smi für Hardware-Check
-rocminfo
-watch -n 1 rocm-smi
+**[PROFILING.md](PROFILING.md)**
+
+Kurzer Einstieg:
+```bash
+rocprofv3 --kernel-trace --stats -S -T -d outdir -o myrun -- python your_script.py
 ```
 
 **Workflow:**
@@ -95,4 +95,4 @@ watch -n 1 rocm-smi
 4. Mit `rocprofv3` oder einfachem Timing prüfen
 5. Bei Convolutions MIOpen-Tuning erwägen
 
-Siehe auch: [PERFORMANCE.md](PERFORMANCE.md)
+Siehe auch: [PERFORMANCE.md](PERFORMANCE.md) · [PROFILING.md](PROFILING.md)
