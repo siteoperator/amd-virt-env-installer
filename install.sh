@@ -18,6 +18,7 @@
 #   - Optional system ROCm install (Ubuntu + CachyOS/Arch aware)
 #   - Robust venv + PyTorch ROCm wheels
 #   - DEBUG mode, detailed logging, error context
+#   - Pre-flight checks for groups, /dev/kfd permissions and HSA_OVERRIDE
 
 set -euo pipefail
 
@@ -108,6 +109,63 @@ detect_distro() {
 }
 
 # ---------------------------------------------------------------------------
+# Pre-flight: Groups, /dev/kfd, HSA_OVERRIDE
+# ---------------------------------------------------------------------------
+check_permissions_and_groups() {
+  log "=== Pre-flight: Groups, /dev/kfd and HSA_OVERRIDE ==="
+
+  # 1. Groups render + video
+  local user_groups
+  user_groups=$(groups "$USER" 2>/dev/null || true)
+  local missing_groups=()
+  for g in render video; do
+    if ! echo "$user_groups" | grep -qw "$g"; then
+      missing_groups+=("$g")
+    fi
+  done
+
+  if [[ ${#missing_groups[@]} -gt 0 ]]; then
+    warn "User '$USER' is missing groups: ${missing_groups[*]}"
+    warn "This is the most common reason for 'no GPU in rocminfo' or permission errors."
+    warn "Fix with:"
+    warn "  sudo usermod -a -G render,video $USER"
+    warn "Then **log out and log back in** (or reboot)."
+  else
+    success "User is in groups 'render' and 'video'."
+  fi
+
+  # 2. /dev/kfd permissions
+  if [[ -e /dev/kfd ]]; then
+    if [[ -r /dev/kfd && -w /dev/kfd ]]; then
+      success "/dev/kfd is readable and writable."
+    else
+      warn "Permission denied on /dev/kfd (or not readable/writable)."
+      warn "Current permissions:"
+      ls -l /dev/kfd | tee -a "$LOG_FILE" || true
+      warn "Fix: ensure user is in 'render' and 'video', then re-login."
+      warn "Also check udev rules (usually provided by the ROCm packages)."
+    fi
+  else
+    warn "/dev/kfd does not exist. amdgpu / amdkfd driver may not be loaded."
+    warn "Try: lsmod | grep -E 'amdgpu|amdkfd'"
+  fi
+
+  # 3. HSA_OVERRIDE_GFX_VERSION hint
+  if [[ -n "${HSA_OVERRIDE_GFX_VERSION:-}" ]]; then
+    log "HSA_OVERRIDE_GFX_VERSION is set to: $HSA_OVERRIDE_GFX_VERSION"
+  else
+    log "HSA_OVERRIDE_GFX_VERSION is not set."
+    warn "Many Ryzen iGPUs (680M, 780M, 890M, …) need this variable."
+    warn "Examples:"
+    warn "  export HSA_OVERRIDE_GFX_VERSION=10.3.0   # 680M / 7735HS / 6900HX"
+    warn "  export HSA_OVERRIDE_GFX_VERSION=11.0.0   # 780M / 8845HS / 8835H / AI 370"
+    warn "  export HSA_OVERRIDE_GFX_VERSION=11.5.0   # some 890M"
+  fi
+
+  log ""
+}
+
+# ---------------------------------------------------------------------------
 # AMD GPU / iGPU Detection
 # ---------------------------------------------------------------------------
 detect_amd_gpus() {
@@ -120,8 +178,18 @@ detect_amd_gpus() {
     agents=$(rocminfo 2>/dev/null | grep -E "Marketing Name:|Name:|Device Type:|gfx" | head -40 || true)
     if [[ -n "$agents" ]]; then
       echo "$agents" | tee -a "$LOG_FILE"
-      gpus_found=1
+      if echo "$agents" | grep -q "Device Type:.*GPU"; then
+        gpus_found=1
+        success "rocminfo sees at least one GPU agent."
+      else
+        warn "rocminfo is available but shows **no GPU agent**."
+        warn "Most common causes: missing groups (render/video) or driver not loaded."
+      fi
+    else
+      warn "rocminfo produced no useful output."
     fi
+  else
+    warn "rocminfo not found. Install ROCm packages for better diagnostics."
   fi
 
   if command -v lspci >/dev/null 2>&1; then
@@ -244,6 +312,7 @@ debug "Debug mode is ON (set -x enabled, full tracing)"
 debug "Bash version: $BASH_VERSION"
 
 detect_distro
+check_permissions_and_groups
 detect_amd_gpus
 install_rocm_system
 
