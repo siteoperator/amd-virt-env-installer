@@ -19,6 +19,7 @@
 #   - Robust venv + PyTorch ROCm wheels
 #   - DEBUG mode, detailed logging, error context
 #   - Pre-flight checks for groups, /dev/kfd permissions and HSA_OVERRIDE
+#   - AMDGPU / amdkfd module and parameter inspection
 
 set -euo pipefail
 
@@ -106,6 +107,47 @@ detect_distro() {
     esac
   fi
   log "Detected distribution: $DISTRO ${DISTRO_VER}"
+}
+
+# ---------------------------------------------------------------------------
+# AMDGPU / amdkfd Module & Parameter Check
+# ---------------------------------------------------------------------------
+check_amdgpu_modules() {
+  log "=== AMDGPU / amdkfd Module Status ==="
+
+  local amdgpu_loaded=0
+  local amdkfd_loaded=0
+
+  if lsmod | grep -q '^amdgpu'; then
+    success "amdgpu module is loaded."
+    amdgpu_loaded=1
+  else
+    warn "amdgpu module is NOT loaded."
+    warn "The driver may not have bound to your GPU. Check dmesg and firmware."
+  fi
+
+  if lsmod | grep -q '^amdkfd'; then
+    success "amdkfd module is loaded."
+    amdkfd_loaded=1
+  else
+    warn "amdkfd module is NOT loaded."
+    warn "ROCm / HIP / /dev/kfd will not work without amdkfd."
+  fi
+
+  if [[ $amdgpu_loaded -eq 1 ]]; then
+    log "Key amdgpu parameters:"
+    for param in ppfeaturemask gpu_recovery runpm dpm; do
+      local val
+      val=$(cat "/sys/module/amdgpu/parameters/$param" 2>/dev/null || echo "n/a")
+      log "  $param = $val"
+    done
+    log "See DRIVER_MODULES.md for recommended settings (especially gpu_recovery=1)."
+  fi
+
+  if [[ $amdkfd_loaded -eq 0 || $amdgpu_loaded -eq 0 ]]; then
+    warn "Missing kernel modules. See DRIVER_MODULES.md for details and troubleshooting."
+  fi
+  log ""
 }
 
 # ---------------------------------------------------------------------------
@@ -312,6 +354,7 @@ debug "Debug mode is ON (set -x enabled, full tracing)"
 debug "Bash version: $BASH_VERSION"
 
 detect_distro
+check_amdgpu_modules
 check_permissions_and_groups
 detect_amd_gpus
 install_rocm_system
