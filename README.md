@@ -100,6 +100,12 @@ Praktische Tipps für maximale Performance (HSA_OVERRIDE, Kernel-Parameter, Cont
 
 **[PERFORMANCE.md](PERFORMANCE.md)**
 
+## Kernel-Optimierungen
+
+Environment-Variablen, PyTorch TunableOp, MIOpen-Tuning und Profiling:
+
+**[KERNEL_OPTIMIZATIONS.md](KERNEL_OPTIMIZATIONS.md)**
+
 ## Usage after install
 
 ```bash
