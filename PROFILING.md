@@ -71,6 +71,10 @@ rocprofv3 --kernel-trace --hip-trace --output-format pftrace \
 # Dann auf https://ui.perfetto.dev öffnen
 ```
 
+Ausführliche Anleitung zur Perfetto-Visualisierung:
+
+**[PERFETTO.md](PERFETTO.md)**
+
 ## 3. PyTorch-spezifisch
 
 ```bash
@@ -125,5 +129,6 @@ rocprofv3 --kernel-trace --pmc SQ_WAVES,SQ_INSTS_VALU \
 
 ## Siehe auch
 
+- [PERFETTO.md](PERFETTO.md) – Timeline-Visualisierung
 - [KERNEL_OPTIMIZATIONS.md](KERNEL_OPTIMIZATIONS.md)
 - [PERFORMANCE.md](PERFORMANCE.md)
