@@ -4,16 +4,31 @@
 #
 # Usage:
 #   ./install.sh
+#   DEBUG=1 ./install.sh                 # verbose tracing
 #   VENV_DIR=~/my-env PYTHON=python3.12 ./install.sh
+#
+# Debugging techniques used in this script:
+#   - DEBUG=1 enables set -x (full command tracing)
+#   - ERR trap with line number, function, and failing command
+#   - debug() helper for conditional verbose output
+#   - All output logged to install.log
+#   - Environment dump on failure when DEBUG=1
 
 set -euo pipefail
 
 # ---------------------------------------------------------------------------
-# Configuration
+# Configuration & Debug mode
 # ---------------------------------------------------------------------------
 VENV_DIR="${VENV_DIR:-./venv}"
 PYTHON="${PYTHON:-python3}"
 LOG_FILE="${LOG_FILE:-install.log}"
+DEBUG="${DEBUG:-0}"
+
+# Enable full tracing when DEBUG=1
+if [[ "$DEBUG" == "1" ]]; then
+  set -x
+  export PS4='+ ${BASH_SOURCE[0]}:${LINENO}: ${FUNCNAME[0]:+${FUNCNAME[0]}(): }'
+fi
 
 # Colors (safe even if terminal does not support them)
 if [[ -t 1 ]]; then
@@ -21,25 +36,51 @@ if [[ -t 1 ]]; then
   GREEN='\033[0;32m'
   YELLOW='\033[1;33m'
   BLUE='\033[0;34m'
+  MAGENTA='\033[0;35m'
   NC='\033[0m'
 else
-  RED='' GREEN='' YELLOW='' BLUE='' NC=''
+  RED='' GREEN='' YELLOW='' BLUE='' MAGENTA='' NC=''
 fi
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-log()   { echo -e "${BLUE}[INFO]${NC} $*" | tee -a "$LOG_FILE"; }
-warn()  { echo -e "${YELLOW}[WARN]${NC} $*" | tee -a "$LOG_FILE" >&2; }
-error() { echo -e "${RED}[ERROR]${NC} $*" | tee -a "$LOG_FILE" >&2; }
+log()    { echo -e "${BLUE}[INFO]${NC} $*" | tee -a "$LOG_FILE"; }
+warn()   { echo -e "${YELLOW}[WARN]${NC} $*" | tee -a "$LOG_FILE" >&2; }
+error()  { echo -e "${RED}[ERROR]${NC} $*" | tee -a "$LOG_FILE" >&2; }
 success(){ echo -e "${GREEN}[OK]${NC} $*" | tee -a "$LOG_FILE"; }
+debug()  { [[ "$DEBUG" == "1" ]] && echo -e "${MAGENTA}[DEBUG]${NC} $*" | tee -a "$LOG_FILE" >&2 || true; }
 
+# Advanced error handler: shows line, function, and the failing command
+on_error() {
+  local exit_code=$?
+  local line_no=${1:-unknown}
+  local func_name=${2:-main}
+  local cmd=${3:-unknown}
+
+  error "Failed at line $line_no in function '${func_name}'"
+  error "Command: $cmd"
+  error "Exit code: $exit_code"
+
+  if [[ "$DEBUG" == "1" ]]; then
+    error "--- Environment dump (DEBUG mode) ---"
+    env | sort | tee -a "$LOG_FILE" >&2 || true
+    error "--- End environment dump ---"
+  fi
+
+  error "Check the full log: $LOG_FILE"
+  error "You can remove a broken venv with: rm -rf \"$VENV_DIR\""
+  exit $exit_code
+}
+
+# Trap ERR to get precise context (BASH_LINENO, FUNCNAME, BASH_COMMAND)
+trap 'on_error ${BASH_LINENO[0]} ${FUNCNAME[1]:-main} "$BASH_COMMAND"' ERR
+
+# Also keep a simple EXIT trap for clean messaging
 cleanup() {
   local exit_code=$?
   if [[ $exit_code -ne 0 ]]; then
-    error "Installation failed with exit code $exit_code"
-    error "Check the log: $LOG_FILE"
-    error "You can remove a broken venv with: rm -rf \"$VENV_DIR\""
+    error "Installation aborted (exit $exit_code)."
   fi
   exit $exit_code
 }
@@ -53,6 +94,8 @@ log "=== AMD ROCm Virtual Environment Installer ==="
 log "Log file: $LOG_FILE"
 log "Target venv: $VENV_DIR"
 log "Python binary: $PYTHON"
+debug "Debug mode is ON (set -x enabled, full tracing)"
+debug "Bash version: $BASH_VERSION"
 
 # ---------------------------------------------------------------------------
 # Pre-flight checks
@@ -65,6 +108,7 @@ fi
 
 PY_VERSION=$("$PYTHON" --version 2>&1 || true)
 log "Detected: $PY_VERSION"
+debug "Python path: $(command -v "$PYTHON")"
 
 # Check that the venv module is available
 if ! "$PYTHON" -c "import venv" >/dev/null 2>&1; then
@@ -82,6 +126,7 @@ fi
 # Rough disk space check (at least ~3 GB free recommended)
 if command -v df >/dev/null 2>&1; then
   FREE_KB=$(df -k . | awk 'NR==2 {print $4}')
+  debug "Free disk space: ${FREE_KB} KB"
   if [[ -n "$FREE_KB" && "$FREE_KB" -lt 3000000 ]]; then
     warn "Less than ~3 GB free disk space in current directory. Installation may fail."
   fi
@@ -115,6 +160,7 @@ if ! source "$VENV_DIR/bin/activate"; then
   exit 1
 fi
 log "Activated venv (Python: $(python --version 2>&1))"
+debug "VIRTUAL_ENV=$VIRTUAL_ENV"
 
 # ---------------------------------------------------------------------------
 # Upgrade pip
@@ -134,6 +180,7 @@ log "Installing ROCm-enabled PyTorch (this can take several minutes)..."
 install_torch() {
   local index_url="$1"
   log "Trying index: $index_url"
+  debug "Running: python -m pip install torch torchvision torchaudio --index-url $index_url"
   if python -m pip install torch torchvision torchaudio --index-url "$index_url" >>"$LOG_FILE" 2>&1; then
     return 0
   else
@@ -200,3 +247,6 @@ log "You can now install additional packages inside the venv, e.g.:"
 log "  pip install transformers accelerate"
 log ""
 log "Full log saved to: $LOG_FILE"
+if [[ "$DEBUG" == "1" ]]; then
+  log "Debug mode was enabled. Full command trace is in the log."
+fi
