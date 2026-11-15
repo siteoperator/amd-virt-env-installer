@@ -40,6 +40,70 @@ source venv/bin/activate
 python -c "import torch; print(torch.cuda.is_available()); print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'No GPU')"
 ```
 
+## Debugging
+
+The installer includes several built-in debugging features.
+
+### Normal run
+
+```bash
+./install.sh
+```
+
+All output is written to `install.log` in the current directory.
+
+### Debug mode (recommended when something fails)
+
+```bash
+DEBUG=1 ./install.sh
+```
+
+This enables:
+- Full command tracing (`set -x`) with file, line number and function name
+- Extra `[DEBUG]` messages
+- Complete environment dump if an error occurs
+
+Example with custom settings:
+
+```bash
+DEBUG=1 VENV_DIR=~/rocm-env PYTHON=python3.12 ./install.sh
+```
+
+### What you get on errors
+
+When a command fails the script shows:
+- Exact line number
+- Function name
+- The failing command
+- Exit code
+- Path to the log file
+- Suggestion how to remove a broken virtual environment
+
+Example error output:
+
+```
+[ERROR] Failed at line 142 in function 'install_torch'
+[ERROR] Command: python -m pip install torch torchvision torchaudio --index-url ...
+[ERROR] Exit code: 1
+[ERROR] Check the full log: install.log
+```
+
+### Useful environment variables
+
+| Variable   | Default   | Description                          |
+|------------|-----------|--------------------------------------|
+| `DEBUG`    | `0`       | Set to `1` for verbose tracing       |
+| `VENV_DIR` | `./venv`  | Path of the virtual environment      |
+| `PYTHON`   | `python3` | Python interpreter to use            |
+| `LOG_FILE` | `install.log` | Log file location                 |
+
+### Common problems
+
+- **`python3-venv` missing** → `sudo apt install python3-venv`
+- **No GPU detected** → Check ROCm installation, user groups (`video`, `render`) and permissions
+- **Disk space** → At least ~3 GB free recommended
+- **Network issues** → The script tries multiple PyTorch ROCm indexes automatically
+
 ## Customization
 
 Edit `install.sh` to change:
