@@ -112,6 +112,12 @@ Ausführliche Anleitung zu Kernel-Statistiken, Traces, Perfetto und Hardware-Cou
 
 **[PROFILING.md](PROFILING.md)**
 
+### Perfetto-Visualisierung
+
+Timeline-basierte Analyse mit Perfetto UI:
+
+**[PERFETTO.md](PERFETTO.md)**
+
 ## Usage after install
 
 ```bash
