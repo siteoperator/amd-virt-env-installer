@@ -28,10 +28,30 @@ chmod +x install.sh
 ```
 
 The script will:
-1. Create a virtual environment (`./venv` by default)
-2. Upgrade pip
-3. Install the latest stable ROCm PyTorch wheels
-4. Verify that the GPU is visible to PyTorch
+1. Detect your AMD GPU / iGPU (via `rocminfo`, `lspci` and `rocm-smi`)
+2. Create a virtual environment (`./venv` by default)
+3. Upgrade pip
+4. Install the latest stable ROCm PyTorch wheels
+5. Verify that the GPU is visible to PyTorch
+
+## GPU / iGPU Detection
+
+At the start the script tries to identify your AMD hardware:
+
+- **rocminfo** (preferred) – shows Marketing Name, gfx target, Device Type
+- **lspci** – lists AMD PCI devices (vendor `1002`) and gives a rough classification (discrete RDNA2/3/4 vs. iGPU)
+- **rocm-smi** – product name if available
+
+Example output:
+
+```
+[INFO] === Detecting AMD GPUs / iGPUs ===
+[INFO] AMD PCI devices (vendor 1002):
+01:00.0 VGA compatible controller [0300]: Advanced Micro Devices, Inc. [AMD/ATI] Navi 32 [Radeon RX 7700 XT] [1002:747e]
+[INFO] Detected: Likely discrete GPU (RDNA3/RDNA4 / RX 7000/9000 series)
+```
+
+This helps you choose the correct ROCm version or decide whether `HSA_OVERRIDE_GFX_VERSION` is needed (especially for iGPUs).
 
 ## Usage after install
 
@@ -103,6 +123,7 @@ Example error output:
 - **No GPU detected** → Check ROCm installation, user groups (`video`, `render`) and permissions
 - **Disk space** → At least ~3 GB free recommended
 - **Network issues** → The script tries multiple PyTorch ROCm indexes automatically
+- **iGPU not working** → Often needs a specific ROCm version or `HSA_OVERRIDE_GFX_VERSION`
 
 ## Customization
 
