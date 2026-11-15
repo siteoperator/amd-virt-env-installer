@@ -94,6 +94,12 @@ Für VFIO-Passthrough, SR-IOV (Instinct), Container und ROCm in VMs siehe:
 
 **[VIRTUALIZATION.md](VIRTUALIZATION.md)**
 
+## Performance Tuning
+
+Praktische Tipps für maximale Performance (HSA_OVERRIDE, Kernel-Parameter, Container vs. VFIO, Monitoring):
+
+**[PERFORMANCE.md](PERFORMANCE.md)**
+
 ## Usage after install
 
 ```bash
