@@ -91,6 +91,10 @@ export HSA_OVERRIDE_GFX_VERSION=11.0.0
 ./install.sh
 ```
 
+Vollständige Kompatibilitätsliste (Instinct, Radeon PRO, RX, Ryzen APUs):
+
+**[COMPATIBILITY.md](COMPATIBILITY.md)**
+
 ## GPU / iGPU Detection & Kernel Modules
 
 At the start the script tries to identify your AMD hardware, checks whether the `amdgpu` and `amdkfd` modules are loaded, and reports important parameters (ppfeaturemask, gpu_recovery, etc.).
