@@ -78,6 +78,17 @@ Additional tips that are always shown:
 
 **Note:** Full automatic `amdgpu-install` is intentionally not executed by default for safety. Review the printed commands and run them if you want the latest AMD packages.
 
+## AMD GPU Virtualisierung
+
+Für VFIO-Passthrough, SR-IOV (Instinct), Container und ROCm in VMs siehe die ausführliche Anleitung:
+
+**[VIRTUALIZATION.md](VIRTUALIZATION.md)**
+
+Kurzfassung:
+- Consumer-Radeon → meist VFIO oder Container
+- Instinct / ausgewählte PRO → SR-IOV (GIM) möglich
+- Container sind in den meisten Fällen die einfachste Lösung
+
 ## Usage after install
 
 ```bash
