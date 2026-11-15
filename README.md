@@ -106,6 +106,12 @@ Environment-Variablen, PyTorch TunableOp, MIOpen-Tuning und Profiling:
 
 **[KERNEL_OPTIMIZATIONS.md](KERNEL_OPTIMIZATIONS.md)**
 
+## Profiling mit rocprofv3
+
+Ausführliche Anleitung zu Kernel-Statistiken, Traces, Perfetto und Hardware-Countern:
+
+**[PROFILING.md](PROFILING.md)**
+
 ## Usage after install
 
 ```bash
